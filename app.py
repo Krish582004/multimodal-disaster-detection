@@ -2,7 +2,11 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import json
-from mock_data import get_mock_prediction
+from src.pipeline import search_satellite_data
+from src.preprocess import generate_multimodal_tensor
+from src.model import run_vision_inference
+from src.nlp_module import get_text_disaster_score
+from src.fusion import generate_final_payload
 
 # --- Page Config ---
 st.set_page_config(page_title="AI Disaster Monitor", layout="wide")
@@ -41,8 +45,20 @@ folium.Rectangle(
 
 if run_analysis:
     with st.spinner("Querying satellites and running AI models..."):
-        # Fetch the simulated AI response
-        result = get_mock_prediction(bbox, disaster_type=disaster_type)
+        # 1. Fetch satellite metadata (IT)
+        search_satellite_data(bbox, days_back=30)
+        
+        # 2. Process signals into a tensor (ECE)
+        tensor = generate_multimodal_tensor(bbox)
+        
+        # 3. Run visual AI inference (ECE)
+        vis_score = run_vision_inference(tensor)
+        
+        # 4. Run NLP context scoring (IT)
+        nlp_score = get_text_disaster_score(bbox, target_hazard=disaster_type)
+        
+        # 5. Fuse results (Combined)
+        result = generate_final_payload(bbox, disaster_type, vis_score, nlp_score)
         
         if result["metrics"]["alert_triggered"]:
             st.error(f"🚨 **ALERT:** High probability of {result['disaster_type']} detected!")
@@ -65,7 +81,8 @@ if run_analysis:
                 'weight': 1,
                 'fillOpacity': 0.5
             },
-            tooltip=folium.GeoJsonTooltip(fields=['hazard', 'severity', 'confidence'])
+            # FIX: Removed 'confidence' from the fields array below
+            tooltip=folium.GeoJsonTooltip(fields=['hazard', 'severity'])
         ).add_to(m)
 
 # Render the map
