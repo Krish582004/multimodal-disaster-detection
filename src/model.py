@@ -3,6 +3,7 @@ src/model.py
 ECE Track: Vision AI model modified for 6-channel multimodal ingestion.
 """
 import os
+import urllib.request
 import torch
 import torch.nn as nn
 from torchvision.models import resnet50, ResNet50_Weights
@@ -43,18 +44,27 @@ class MultimodalDisasterModel(nn.Module):
 
 def run_vision_inference(stacked_tensor: torch.Tensor) -> float:
     print("Initializing Multimodal ResNet50...")
+    
+    # 1. Setup paths and check if the model is already downloaded
     model = MultimodalDisasterModel(num_channels=6, num_classes=5)
-    
     weights_path = "models/disaster_model.pth"
-    if os.path.exists(weights_path):
-        model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
-        print("✅ Loaded trained weights from models/disaster_model.pth")
-    else:
-        print("⚠️ Warning: Trained checkpoint not found. Using random initialization.")
-
-    model.eval()
-    batched_tensor = stacked_tensor.unsqueeze(0)
     
+    # 2. Automatically download the model if it is missing
+    if not os.path.exists(weights_path):
+        print("Downloading model weights from GitHub...")
+        os.makedirs("models", exist_ok=True)
+        
+        # PASTE YOUR LINK INSIDE THESE QUOTES:
+        weights_url = "https://github.com/Krish582004/multimodal-disaster-detection/releases/download/v1.0/disaster_model.pth" 
+        
+        urllib.request.urlretrieve(weights_url, weights_path)
+        print("Download complete.")
+
+    # 3. Load the weights and run the prediction
+    model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
+    model.eval()
+    
+    batched_tensor = stacked_tensor.unsqueeze(0)
     with torch.no_grad():
         raw_logits = model(batched_tensor)
         probabilities = torch.softmax(raw_logits, dim=1)
