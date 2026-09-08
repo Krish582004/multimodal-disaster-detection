@@ -1,0 +1,41 @@
+# ==============================
+# 1. Machine Learning & Datasets
+# ==============================
+# Ignore heavy PyTorch model weights (over 100MB breaks GitHub)
+models/*.pth
+*.pt
+*.ckpt
+
+# Ignore raw image datasets and CSV files
+data/
+*.csv
+*.json
+
+# ==============================
+# 2. Security & Passwords
+# ==============================
+# Ignore Streamlit's local secret vault (your Gmail app password)
+.streamlit/secrets.toml
+.env
+*.env
+
+# ==============================
+# 3. Python & Environments
+# ==============================
+# Ignore the virtual environment folder
+venv/
+env/
+.venv/
+
+# Ignore auto-generated Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ==============================
+# 4. OS & System Files
+# ==============================
+# Ignore Mac/Windows thumbnail and directory caches
+.DS_Store
+Thumbs.db
