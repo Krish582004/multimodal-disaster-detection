@@ -1,63 +1,93 @@
-from transformers import pipeline
-import time
+"""
+src/nlp_module.py
+IT Track: Live global disaster feed ingestion (GDACS GeoJSON) and NLP context scoring.
+"""
 
-def fetch_local_alerts(bbox: list) -> str:
-    """
-    Simulates scraping live news APIs or Twitter/X feeds for a specific bounding box.
-    In production, you would connect to the GDELT Project API or X API here.
-    """
-    print(f"Scraping social and news APIs for bounding box: {bbox}...")
-    time.sleep(1) # Simulate network delay
-    
-    # Simulated live text feeds from the region
-    mock_live_feed = (
-        "Severe waterlogging reported in the city center. "
-        "Authorities are issuing evacuation warnings for riverbank areas. "
-        "Traffic is at a standstill due to monsoon flooding."
-    )
-    return mock_live_feed
+import requests
 
-def get_text_disaster_score(bbox: list, target_hazard: str = "flood") -> float:
-    """
-    Analyzes local text feeds using a Hugging Face Large Language Model
-    to determine the probability of an active disaster.
-    """
-    live_text = fetch_local_alerts(bbox)
-    print("Loading Hugging Face NLP model (this may take a moment to download the first time)...")
-    
-    # Initialize a Zero-Shot Classifier
-    # We use a lightweight model (valhalla/distilbart-mnli-12-3) for faster local execution
-    classifier = pipeline(
-        "zero-shot-classification", 
-        model="valhalla/distilbart-mnli-12-3"
-    )
-    
-    # Define the categories we want the AI to sort the text into
-    labels = [f"active {target_hazard} disaster", "normal weather", "safe and calm"]
-    
-    print("Analyzing semantics and context...")
-    result = classifier(live_text, candidate_labels=labels)
-    
-    # Extract the probability score for the disaster label
-    disaster_label = f"active {target_hazard} disaster"
-    disaster_index = result["labels"].index(disaster_label)
-    confidence_score = result["scores"][disaster_index]
-    
-    return round(confidence_score, 3)
 
-if __name__ == "__main__":
-    print("--- IT NLP CONTEXT TEST ---")
-    sample_bbox = [88.20, 22.45, 88.50, 22.70]
+def fetch_live_global_disasters(event_types: list = ["FL", "WF", "TC", "DR", "EQ"]) -> list:
+    """
+    Fetches real-time active disaster alerts from the official UN/EC GDACS GeoJSON feed.
+    """
+    url = "https://www.gdacs.org/xml/gdacs.geojson"
     
     try:
-        score = get_text_disaster_score(sample_bbox, target_hazard="flood")
-        print("\n✅ Text Analysis Complete!")
-        print(f"NLP Disaster Confidence Score: {score * 100:.1f}%")
-        
-        if score > 0.60:
-            print("Context validates visual data: High likelihood of real emergency.")
-        else:
-            print("Context implies false positive: Likely just routine weather.")
-            
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        events_data = response.json()
     except Exception as e:
-        print(f"Error during NLP processing: {e}")
+        print(f"Failed to fetch live GDACS alerts: {e}")
+        return []
+
+    active_disasters = []
+
+    features = events_data.get("features", [])
+    for feature in features:
+        props = feature.get("properties", {})
+        geometry = feature.get("geometry", {})
+        
+        event_type = props.get("eventtype")
+        if event_type in event_types:
+            coords = geometry.get("coordinates", [])
+            
+            # Safely unwrap nested coordinate lists (Polygons / MultiPolygons)
+            while isinstance(coords, list) and len(coords) > 0 and isinstance(coords[0], list):
+                coords = coords[0]
+
+            # Skip entries without valid [lon, lat] pairs
+            if not isinstance(coords, list) or len(coords) < 2:
+                continue
+
+            lon, lat = coords[0], coords[1]
+            
+            bbox = [
+                round(lon - 0.15, 4),
+                round(lat - 0.15, 4),
+                round(lon + 0.15, 4),
+                round(lat + 0.15, 4)
+            ]
+
+            alert_level = str(props.get("alertlevel", "Green")).upper()
+            title = props.get("name", props.get("eventname", "Unknown Event"))
+            country = props.get("country", "Global Region")
+            
+            # Explicitly map the UN GDACS acronyms to their full string names
+            hazard_map = {
+                "FL": "flood",
+                "WF": "wildfire",
+                "TC": "cyclone",
+                "DR": "drought",
+                "EQ": "earthquake"
+            }
+            mapped_hazard = hazard_map.get(event_type, "unknown")
+            
+            score_map = {"RED": 0.95, "ORANGE": 0.75, "GREEN": 0.40}
+            nlp_score = score_map.get(alert_level, 0.50)
+
+            active_disasters.append({
+                "id": props.get("eventid"),
+                "name": f"{title} ({country})",
+                "disaster_type": mapped_hazard,
+                "alert_level": alert_level,
+                "bbox": bbox,
+                "lat": lat,
+                "lon": lon,
+                "nlp_score": nlp_score,
+                "description": props.get("description", "No detailed summary available.")
+            })
+
+    return active_disasters
+
+
+if __name__ == "__main__":
+    print("--- LIVE GLOBAL DISASTER SCANNER ---")
+    live_events = fetch_live_global_disasters()
+    
+    print(f"Found {len(live_events)} active disaster alerts worldwide.\n")
+    for event in live_events[:5]:
+        print(f"🚨 [{event['alert_level']}] {event['name']}")
+        print(f"   Hazard Type: {event['disaster_type'].upper()}")
+        print(f"   Bounding Box: {event['bbox']}")
+        print(f"   NLP Risk Score: {event['nlp_score']}")
+        print("-" * 50)

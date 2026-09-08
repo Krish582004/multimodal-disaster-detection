@@ -1,33 +1,80 @@
-from datetime import datetime, timezone
+"""
+src/fusion.py
+Multimodal Fusion Engine: Combines Satellite Vision AI scores with GDACS NLP Context scores.
+"""
 
-def generate_final_payload(bbox: list, disaster_type: str, vis_conf: float, nlp_conf: float) -> dict:
-    # 70% weight to visual sensors, 30% to text context
-    fused_score = round((vis_conf * 0.70) + (nlp_conf * 0.30), 3)
+import sys
+import os
+
+# Ensure local src imports work seamlessly regardless of run context
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from preprocess import generate_multimodal_tensor
+from model import run_vision_inference
+from nlp_module import fetch_live_global_disasters
+
+
+def run_multimodal_fusion(disaster_event: dict) -> dict:
+    """
+    Synthesizes visual satellite inference and text context scores into a single threat metric.
+    """
+    bbox = disaster_event.get("bbox", [0, 0, 0, 0])
+    nlp_score = disaster_event.get("nlp_score", 0.50)
     
-    # Generate a localized polygon for the map visualization
-    d_lon, d_lat = (bbox[2] - bbox[0]) * 0.25, (bbox[3] - bbox[1]) * 0.25
+    # 1. Trigger ECE Spatial AI Pipeline
+    spatial_tensor = generate_multimodal_tensor(bbox)
+    vision_score = run_vision_inference(spatial_tensor)
     
-    return {
-        "status": "success",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "disaster_type": disaster_type,
-        "metrics": {
-            "visual_confidence": vis_conf,
-            "nlp_confidence": nlp_conf,
-            "fused_score": fused_score,
-            "alert_triggered": fused_score >= 0.70,
-        },
-        "spatial_features": {
-            "type": "FeatureCollection",
-            "features": [{
+    # 2. Weighted Multimodal Fusion Calculation (65% Vision / 35% NLP)
+    fused_score = round((0.65 * vision_score) + (0.35 * nlp_score), 3)
+    
+    # 3. Categorize Threat Level
+    if fused_score >= 0.75:
+        severity = "HIGH"
+    elif fused_score >= 0.50:
+        severity = "MEDIUM"
+    else:
+        severity = "LOW"
+        
+    # 4. Construct Spatial Feature for Folium rendering
+    spatial_feature = {
+        "type": "FeatureCollection",
+        "features": [
+            {
                 "type": "Feature",
-                "properties": {"hazard": disaster_type, "severity": "HIGH" if fused_score > 0.8 else "MEDIUM"},
                 "geometry": {
                     "type": "Polygon",
-                    "coordinates": [[[bbox[0]+d_lon, bbox[1]+d_lat], [bbox[2]-d_lon, bbox[1]+d_lat], 
-                                     [bbox[2]-d_lon, bbox[3]-d_lat], [bbox[0]+d_lon, bbox[3]-d_lat], 
-                                     [bbox[0]+d_lon, bbox[1]+d_lat]]]
+                    "coordinates": [[
+                        [bbox[0], bbox[1]],
+                        [bbox[2], bbox[1]],
+                        [bbox[2], bbox[3]],
+                        [bbox[0], bbox[3]],
+                        [bbox[0], bbox[1]]
+                    ]]
+                },
+                "properties": {
+                    "hazard": disaster_event.get("disaster_type", "unknown"),
+                    "severity": severity,
+                    "confidence": f"{fused_score * 100:.1f}%"
                 }
-            }]
-        }
+            }
+        ]
     }
+    
+    return {
+        "event_id": disaster_event.get("id"),
+        "event_name": disaster_event.get("name"),
+        "hazard_type": disaster_event.get("disaster_type"),
+        "vision_score": vision_score,
+        "nlp_score": nlp_score,
+        "fused_score": fused_score,
+        "severity": severity,
+        "spatial_features": spatial_feature
+    }
+
+
+if __name__ == "__main__":
+    live_events = fetch_live_global_disasters()
+    if live_events:
+        assessment = run_multimodal_fusion(live_events[0])
+        print("Fusion test success:", assessment["fused_score"])

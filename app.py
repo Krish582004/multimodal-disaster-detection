@@ -9,6 +9,7 @@ from streamlit_folium import st_folium
 
 from src.nlp_module import fetch_live_global_disasters
 from src.fusion import run_multimodal_fusion
+from src.alert_system import dispatch_sos  # <-- Added SOS import
 
 st.set_page_config(page_title="Omni-Hazard Disaster Engine", layout="wide")
 
@@ -98,3 +99,22 @@ if st.session_state.assessment is not None and st.session_state.analyzed_event_i
     ).add_to(m)
 
     st_folium(m, width=1000, height=500)
+
+    # --- EMERGENCY RESPONSE PROTOCOL ---
+    st.markdown("---")
+    st.subheader("🚨 Emergency Response Protocol")
+    
+    st.write(f"Current Hazard: **{selected_event['disaster_type'].upper()}** | Calculated Severity: **{assessment['severity']}**")
+    
+    # Render the SOS button unconditionally once the state exists
+    if st.button("Broadcast SOS to Local Authorities", type="primary"):
+        with st.spinner("Dispatching emergency payload..."):
+            dispatch_msg = dispatch_sos(
+                event_name=selected_event["name"],
+                hazard_type=selected_event["disaster_type"],
+                severity=assessment["severity"],
+                lat=selected_event["lat"],
+                lon=selected_event["lon"]
+            )
+        st.success("SOS Alert Successfully Broadcasted!")
+        st.code(dispatch_msg, language="text")
