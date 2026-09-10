@@ -9,9 +9,14 @@ from streamlit_folium import st_folium
 
 from src.nlp_module import fetch_live_global_disasters
 from src.fusion import run_multimodal_fusion
-from src.alert_system import dispatch_sos  # <-- Added SOS import
+from src.alert_system import dispatch_sos
 
-st.set_page_config(page_title="Omni-Hazard Disaster Engine", layout="wide")
+st.set_page_config(
+    page_title="Omni-Hazard Engine",
+    page_icon="🌍",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 st.title("🚨 Omni-Hazard Multimodal Disaster Detection System")
 st.markdown("Fusing UN GDACS NLP event feeds with Sentinel-1/2 Vision AI models for real-time hazard evaluation.")
@@ -41,7 +46,6 @@ st.sidebar.write(f"**Coordinates:** [{selected_event['lat']}, {selected_event['l
 st.sidebar.write(f"**BBox:** {selected_event['bbox']}")
 
 # --- SESSION STATE MANAGEMENT ---
-# Initialize persistent variables so results survive script reruns
 if "assessment" not in st.session_state:
     st.session_state.assessment = None
 if "analyzed_event_id" not in st.session_state:
@@ -56,7 +60,6 @@ st.write(f"### Analyzing Target: **{selected_event['name']}**")
 
 if st.button("Run Multimodal Fusion Analysis", type="primary"):
     with st.spinner("Fetching spatial tensors & synthesizing neural scores..."):
-        # Save output directly to session state
         st.session_state.assessment = run_multimodal_fusion(selected_event)
         st.session_state.analyzed_event_id = selected_event["id"]
 
@@ -72,49 +75,50 @@ if st.session_state.assessment is not None and st.session_state.analyzed_event_i
     col2.metric("NLP Context Score (35%)", f"{assessment['nlp_score'] * 100:.1f}%")
     col3.metric("Final Fused Severity", f"{assessment['fused_score'] * 100:.1f}%", delta=f"Threat: {assessment['severity']}")
 
-    # Render Geographical Map
+    # --- PROFESSIONAL UI TABS ---
     st.markdown("---")
-    st.subheader("Geographical Footprint & Bounding Box Overlay")
+    tab1, tab2 = st.tabs(["🗺️ Spatial Threat Map", "🚨 Emergency Dispatch Protocol"])
 
-    # Initialize Folium Map centered on hazard epicenter
-    m = folium.Map(location=[selected_event["lat"], selected_event["lon"]], zoom_start=9)
+    with tab1:
+        st.subheader("Geographical Footprint & Bounding Box Overlay")
 
-    # Add Event Epicenter Marker
-    folium.Marker(
-        [selected_event["lat"], selected_event["lon"]],
-        popup=selected_event["name"],
-        tooltip=selected_event["disaster_type"].upper(),
-        icon=folium.Icon(color="red" if selected_event["alert_level"] == "RED" else "orange")
-    ).add_to(m)
+        # Initialize Folium Map centered on hazard epicenter
+        m = folium.Map(location=[selected_event["lat"], selected_event["lon"]], zoom_start=9)
 
-    # Render Bounding Box Polygon from Fusion Output
-    folium.GeoJson(
-        assessment["spatial_features"],
-        style_function=lambda x: {
-            "fillColor": "#ff0000" if assessment["severity"] == "HIGH" else "#ffa500",
-            "color": "#ff0000" if assessment["severity"] == "HIGH" else "#ffa500",
-            "weight": 2,
-            "fillOpacity": 0.35
-        }
-    ).add_to(m)
+        # Add Event Epicenter Marker
+        folium.Marker(
+            [selected_event["lat"], selected_event["lon"]],
+            popup=selected_event["name"],
+            tooltip=selected_event["disaster_type"].upper(),
+            icon=folium.Icon(color="red" if selected_event["alert_level"] == "RED" else "orange")
+        ).add_to(m)
 
-    st_folium(m, width=1000, height=500)
+        # Render Bounding Box Polygon from Fusion Output
+        folium.GeoJson(
+            assessment["spatial_features"],
+            style_function=lambda x: {
+                "fillColor": "#ff0000" if assessment["severity"] == "HIGH" else "#ffa500",
+                "color": "#ff0000" if assessment["severity"] == "HIGH" else "#ffa500",
+                "weight": 2,
+                "fillOpacity": 0.35
+            }
+        ).add_to(m)
 
-    # --- EMERGENCY RESPONSE PROTOCOL ---
-    st.markdown("---")
-    st.subheader("🚨 Emergency Response Protocol")
-    
-    st.write(f"Current Hazard: **{selected_event['disaster_type'].upper()}** | Calculated Severity: **{assessment['severity']}**")
-    
-    # Render the SOS button unconditionally once the state exists
-    if st.button("Broadcast SOS to Local Authorities", type="primary"):
-        with st.spinner("Dispatching emergency payload..."):
-            dispatch_msg = dispatch_sos(
-                event_name=selected_event["name"],
-                hazard_type=selected_event["disaster_type"],
-                severity=assessment["severity"],
-                lat=selected_event["lat"],
-                lon=selected_event["lon"]
-            )
-        st.success("SOS Alert Successfully Broadcasted!")
-        st.code(dispatch_msg, language="text")
+        st_folium(m, width=1000, height=500)
+
+    with tab2:
+        st.subheader("Automated SOS Dispatch")
+        st.write(f"Current Hazard: **{selected_event['disaster_type'].upper()}** | Calculated Severity: **{assessment['severity']}**")
+        
+        # Render the SOS button unconditionally inside the dispatch tab
+        if st.button("Broadcast SOS to Local Authorities", type="primary"):
+            with st.spinner("Dispatching emergency payload..."):
+                dispatch_msg = dispatch_sos(
+                    event_name=selected_event["name"],
+                    hazard_type=selected_event["disaster_type"],
+                    severity=assessment["severity"],
+                    lat=selected_event["lat"],
+                    lon=selected_event["lon"]
+                )
+            st.success("SOS Alert Successfully Broadcasted via Secure SMTP!")
+            st.code(dispatch_msg, language="text")
