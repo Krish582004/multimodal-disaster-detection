@@ -1,0 +1,19 @@
+# Python Artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# Environment Variables (Keep secrets safe!)
+.env
+
+# Project Specific Database
+scans.db
+
+# Generated Satellite Radar Images
+*.tiff
+*.tif
