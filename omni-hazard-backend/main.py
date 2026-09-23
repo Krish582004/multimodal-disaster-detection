@@ -3,8 +3,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from celery.result import AsyncResult
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException  # type: ignore[reportMissingImports]
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from geopy.geocoders import Nominatim
 import matplotlib
@@ -21,6 +21,14 @@ from tasks import fetch_aws_goes_weather, fetch_cdse_sentinel_data
 matplotlib.use("Agg")  # Non-GUI backend for server environments
 
 app = FastAPI(title="Omni Hazard Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ScanRequest(BaseModel):
@@ -111,7 +119,7 @@ def trigger_scan(request: ScanRequest):
 @app.get("/task-status/{task_id}")
 def get_task_status(task_id: str):
     """Checks real-time status of Celery task."""
-    task = AsyncResult(task_id, app=celery)
+    task = celery.AsyncResult(task_id)
     response = {"task_id": task_id, "status": task.status}
     if task.ready():
         response["result"] = task.result
@@ -215,3 +223,4 @@ def get_scan_history():
     records = db.query(ScanRecord).order_by(ScanRecord.id.desc()).all()
     db.close()
     return records
+
